@@ -144,7 +144,7 @@ Then you can run the above code in terminal, i.e.,
 mpirun -np N julia fit.jl
 ```
 
-The output of each iteration will be displayed on the terminal if `disp=true`, and the process of each iteration will be saved in the "fitting_process" file if `write=true`.
+where N is the number of cores for parallel processing. The output of each iteration will be displayed on the terminal if `disp=true`, and the process of each iteration will be saved in the "fitting_process" file if `write=true`.
 
 
 
