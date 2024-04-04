@@ -96,7 +96,7 @@ Output:
  The best parameters from the search are [1.421, -4.34, 2.92]
  ```
 
-<img src="/Users/jiajunmo/Library/Application Support/typora-user-images/image-20240404232148319.png" alt="image-20240404232148319" style="zoom: 50%;" />
+<img width="956" alt="image" src="https://github.com/Mojiajun2022/Optimization-algorithm/assets/130334983/0c2bfaaf-c983-48e0-887f-140e5a3a05c7">
 
 
 
