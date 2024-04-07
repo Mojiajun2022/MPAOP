@@ -15,7 +15,7 @@ There are some corresponding improvements have been made, such as it can start f
 We can use MPAOP.jl to search the global optimal solution. The function form is: 
 
 ```julia
-Top_predator_fit, Top_predator_pos, CV = MPAOP(SearchAgents_no, Max_iterations, p0, lb, ub, narvs, fobj;disp=true, Fixbox=true, Write=false, FADs0=0.2, P0=0.5)
+Top_predator_fit, Top_predator_pos, CV = MPA(SearchAgents_no, Max_iterations, p0, lb, ub, narvs, fobj;disp=true, Fixbox=true, Write=false, FADs0=0.2, P0=0.5)
 ```
 
 ###### Output results：
