@@ -19,7 +19,7 @@ num_obj = 2
 
 p_empty = []
 
-fit_s, pos_s, curve_s = SOMPA(
+fit_s, pos_s, curve_s = MOMPA(
     fobj=fobj, lb=lb_so, ub=ub_so,
     SearchAgents_no=SearchAgents_no, Max_iter=Max_iter,
     p0_optional=p_empty, variant=:standard_mpa, parallelism=:serial,use_gaussian_perturbation = false,gaussian_perturb_on_all_dims = false,

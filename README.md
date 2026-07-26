@@ -9,6 +9,9 @@ This package started as a port of the reference MATLAB implementation and has
 since grown a multi-objective solver, distributed execution, and a
 zero-allocation core.
 
+**One entry point: `MOMPA`.** Set `num_objectives = 1` (the default) for
+ordinary minimisation, or `≥ 2` for multi-objective optimisation.
+
 📖 **[Full tutorial → `docs/TUTORIAL.md`](docs/TUTORIAL.md)**
 
 ---
@@ -24,7 +27,7 @@ Pkg.add(url="https://github.com/Mojiajun2022/MPAOP")
 
 ## Quick start
 
-### Single objective
+### Single objective (`num_objectives = 1`, the default)
 
 ```julia
 using MPAOP
@@ -33,7 +36,7 @@ fobj(x) = abs(abs(x[1] + x[2]) - abs(x[3])) +
           abs(x[1] * x[2] * x[3] + 18) +
           abs(x[1]^2 * x[2] + 3 * x[3])
 
-best_fit, best_pos, curve = SOMPA(
+best_fit, best_pos, curve = MOMPA(
     fobj = fobj,
     lb = fill(-10.0, 3),
     ub = fill(10.0, 3),
@@ -44,7 +47,7 @@ println("best value      = ", best_fit)
 println("best parameters = ", best_pos)
 ```
 
-### Multi objective
+### Multi objective (`num_objectives ≥ 2`)
 
 ```julia
 using MPAOP
@@ -65,28 +68,50 @@ AP, AO, curve = MOMPA(
 println("hypervolume = ", hypervolume(AO, [1.1, 1.1]))
 ```
 
+The returned triple depends on `num_objectives`:
+
+| `num_objectives` | returns |
+|------------------|---------|
+| `1` | `(best_fitness, best_position, convergence_curve)` |
+| `≥ 2` | `(archive_positions, archive_objectives, convergence_curve)` — the Pareto front, one solution per row |
+
 ### Parallel
 
 ```bash
-julia -t auto script.jl                 # threads
-mpiexec -n 8 julia --project=. script.jl   # MPI
+julia -t auto script.jl                        # threads
+mpiexec -n 8 julia --project=. script.jl       # MPI
 mpiexec -n 4 julia -t 8 --project=. script.jl  # hybrid
 ```
 
 ```julia
-SOMPA(...; parallelism = :threads)       # :serial | :threads | :mpi | :mpi_threads
+MOMPA(...; parallelism = :threads)       # :serial | :threads | :mpi | :mpi_threads
 ```
 
 ---
 
-## What's new in v0.3.0
+## What's new
 
-v0.3 is a full rewrite of the compute core. **The keyword interface is
-unchanged** — existing scripts keep working and simply run faster.
+### v0.4.0 — one entry point
 
-### Performance (Apple M-series, 12 cores, Julia 1.11)
+`SOMPA` was removed. Single-objective optimisation is `MOMPA` with
+`num_objectives = 1` (the default) — same keywords, same returned triple.
+Migrating a v0.3 script is a rename:
 
-| Benchmark | v0.2.1 | v0.3.0 | Gain |
+```bash
+sed -i '' 's/\bSOMPA(/MOMPA(/g' *.jl
+```
+
+The default output filenames were unified to `mpa_log.csv` / `mpa_history.h5`.
+A vector-valued objective run with the default `num_objectives = 1` now fails
+with an error that names the keyword to set.
+
+### v0.3.0 — rewritten core
+
+Full rewrite of the compute engine; the keyword interface was kept.
+
+**Performance** (Apple M-series, 12 cores, Julia 1.11):
+
+| Benchmark | v0.2.1 | v0.3+ | Gain |
 |-----------|--------|--------|------|
 | Single objective, 30-D sphere, 100 agents × 200 iter | 0.480 s / 262 MiB | **0.010 s / 0.1 MiB** | **48× faster, 2600× less memory** |
 | Multi objective ZDT1, 30-D, 100 agents × 200 iter | 0.875 s / 3038 MiB | **0.023 s / 3.5 MiB** | **38× / 870×** |
@@ -99,7 +124,7 @@ unchanged** — existing scripts keep working and simply run faster.
 Solution quality is unchanged or slightly better (15 independent runs, ZDT1/2/3
 IGD and hypervolume all within one standard deviation of v0.2).
 
-### How
+**How**
 
 * **Column-major population layout** (`dim × nagents`) — one agent per
   contiguous column, so extracting an agent is a `memcpy` and every kernel is
@@ -118,7 +143,7 @@ IGD and hypervolume all within one standard deviation of v0.2).
   `MPI.bcast` calls.
 * **Seven dependencies instead of fifteen.**
 
-### New features
+**New features**
 
 | Feature | Keyword |
 |---------|---------|
@@ -136,33 +161,31 @@ IGD and hypervolume all within one standard deviation of v0.2).
 | Throttled printing / logging | `disp_every`, `csv_flush_every` |
 | Quality indicators | `hypervolume`, `igd`, `gd`, `spacing_metric`, `max_spread`, `pareto_filter` |
 
-### Bug fixes
+**Bug fixes**
 
-* `SOMPA(parallelism = :mpi)` **crashed** on MPI.jl 0.20
+* The MPI path **crashed** on MPI.jl 0.20
   (`MPI.Gather(Ref(x), …)` → `ArgumentError: Type must be isbitstype`).
-* `SOMPA(saveHDF = true)` with the default `history_save_interval` threw a
-  `BoundsError` at the end of every run (a 2-D array indexed with three
-  indices), and passed a scalar where a matrix was expected.
+* `saveHDF = true` with the default `history_save_interval` threw a
+  `BoundsError` at the end of every single-objective run.
 * The MPI population was silently padded up to a multiple of the rank count,
   wasting objective evaluations. Uneven splits are now handled by
   `Allgatherv!`.
-* `MOMPA(variant = :nmpa)` double-counted the current position in phase 1
-  (`+=` where `SOMPA` uses `=`).
+* The multi-objective `:nmpa` variant double-counted the current position in
+  phase 1.
 * `SaveMPAHistory` deleted the output file and then `sleep(0.05)`-ed before
   rewriting it — a 50 ms stall on every checkpoint, for no benefit.
 * The single-objective result was silently rounded to 4 digits, printing a
   genuine residual of `1.76e-9` as `0.0`. Full precision is returned now; pass
   `round_digits = 4` for the old behaviour.
 
-### Behaviour changes
+**Behaviour changes vs v0.2** — each has a keyword that restores the old
+behaviour:
 
-Three defaults changed. Each has a keyword that restores the v0.2 behaviour:
-
-| Item | v0.2 | v0.3 | Restore |
-|------|------|------|---------|
-| `SOMPA` return precision | rounded (4 / 8 digits) | full precision | `round_digits = 4` |
-| MOMPA archive | may contain dominated solutions | strictly non-dominated | `archive_mode = :fronts` |
-| MOMPA leader selection | uniform random | crowding tournament | `elite_selection = :random` |
+| Item | v0.2 | now | Restore |
+|------|------|-----|---------|
+| single-objective return precision | rounded (4 / 8 digits) | full precision | `round_digits = 4` |
+| multi-objective archive | may contain dominated solutions | strictly non-dominated | `archive_mode = :fronts` |
+| multi-objective leader selection | uniform random | crowding tournament | `elite_selection = :random` |
 
 ---
 
@@ -190,7 +213,7 @@ ci = confidence_interval(best_pos, fobj, 0.95)
 ## Testing
 
 ```julia
-using Pkg; Pkg.test("MPAOP")           # 250 tests
+using Pkg; Pkg.test("MPAOP")           # 257 tests
 ```
 
 ```bash
@@ -207,3 +230,7 @@ result **bit for bit**.
 > Faramarzi, A., Heidarinejad, M., Mirjalili, S., & Gandomi, A. H. (2020).
 > Marine Predators Algorithm: A nature-inspired metaheuristic.
 > *Expert Systems with Applications*, 152, 113377.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

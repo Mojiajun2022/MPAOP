@@ -25,13 +25,13 @@ ub = fill(5.0, d)
 # split handles it without padding the population.
 N = 17
 
-ref_fit, ref_pos, ref_curve = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
+ref_fit, ref_pos, ref_curve = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
     Max_iter=40, disp=false, seed=1234, parallelism=:serial)
 
-mpi_fit, mpi_pos, mpi_curve = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
+mpi_fit, mpi_pos, mpi_curve = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
     Max_iter=40, disp=false, seed=1234, parallelism=:mpi)
 
-hyb_fit, hyb_pos, _ = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
+hyb_fit, hyb_pos, _ = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=N,
     Max_iter=40, disp=false, seed=1234, parallelism=:mpi_threads)
 
 mo_ref = MOMPA(fobj=zdt1, lb=zeros(d), ub=ones(d), SearchAgents_no=N, Max_iter=30,

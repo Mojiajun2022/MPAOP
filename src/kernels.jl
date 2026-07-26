@@ -1,5 +1,5 @@
 # =============================================================================
-#  kernels.jl -- allocation-free numerical kernels used by SOMPA / MOMPA
+#  kernels.jl -- allocation-free numerical kernels used by MOMPA
 #
 #  MEMORY LAYOUT NOTE
 #  ------------------
@@ -23,6 +23,13 @@ Map `NaN` to `Inf` so that a misbehaving objective function can never poison
 `findmin`/dominance comparisons.  Everything else is passed through.
 """
 @inline sanitize(v::Real) = (x = Float64(v); isnan(x) ? Inf : x)
+
+# Catches the commonest mistake: a vector-valued objective run with the default
+# `num_objectives = 1`.
+sanitize(v) = throw(ArgumentError(
+    "the objective returned a $(typeof(v)) but `num_objectives = 1` expects a " *
+    "single real number. For multi-objective optimisation pass " *
+    "`num_objectives = $(applicable(length, v) ? length(v) : "<k>")`."))
 
 # --- box constraint --------------------------------------------------------
 
@@ -98,7 +105,7 @@ end
 
 # --- MPA movement ----------------------------------------------------------
 
-# Elite accessor: single global leader (SOMPA) or per-agent leader (MOMPA).
+# Elite accessor: single global leader (one objective) or per-agent leader (many).
 @inline elite_at(E::Vector{Float64}, i::Int, ::Int) = @inbounds E[i]
 @inline elite_at(E::Matrix{Float64}, i::Int, j::Int) = @inbounds E[i, j]
 
@@ -109,7 +116,7 @@ The three-phase Marine-Predators movement operator, fused into one
 allocation-free pass over the population.
 
 * `Xnew`, `X` : `dim × n`, may alias-free double buffers
-* `E`         : leader(s); `Vector` (SOMPA) or `dim × n` `Matrix` (MOMPA)
+* `E`         : leader(s); `Vector` (one objective) or `dim × n` `Matrix` (many)
 * `stage`     : 1 = Brownian / high-velocity, 2 = mixed, 3 = Lévy / low-velocity
 * `wfac`      : NMPA inertia weight (`1.0` for `:standard_mpa`)
 

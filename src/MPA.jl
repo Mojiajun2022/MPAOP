@@ -1,11 +1,13 @@
 # =============================================================================
 #  MPA.jl -- Marine Predators Algorithm drivers
 #
-#    SOMPA : single objective
-#    MOMPA : multi objective (external archive + Pareto ranking)
+#    MOMPA is the single entry point:
+#      num_objectives == 1  -> classic single-objective MPA (greedy memory,
+#                              one top predator, best-so-far convergence curve)
+#      num_objectives >= 2  -> external archive + Pareto ranking
 #
-#  Both keep the keyword interface of MPAOP ≤ 0.2; every new keyword has a
-#  default that reproduces the old behaviour unless documented otherwise.
+#  Every new keyword has a default that reproduces the old behaviour unless
+#  documented otherwise.
 # =============================================================================
 
 "Immutable, fully typed configuration handed to the (type stable) inner loops."
@@ -68,119 +70,8 @@ function _flush_csv!(buf::Vector{NamedTuple{(:text,),Tuple{String}}}, path::Stri
 end
 
 # =============================================================================
-#  Single objective
+#  Single-objective engine (reached through MOMPA with num_objectives = 1)
 # =============================================================================
-
-"""
-    SOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, kwargs...)
-        -> (best_fitness, best_position, convergence_curve)
-
-Single-objective Marine Predators Algorithm.
-
-# Required
-* `fobj`             -- `f(x::Vector{Float64}) -> Real`
-* `lb`, `ub`         -- box bounds, `Vector{Float64}` of equal length
-* `SearchAgents_no`  -- population size
-* `Max_iter`         -- iterations (each one costs `2 · SearchAgents_no` evaluations)
-
-# Classic options (unchanged)
-`p0_optional`, `variant` (`:standard_mpa` | `:nmpa`), `first_stage_ratio`,
-`second_stage_ratio`, `FADs0`, `P0`, `parallelism`, `disp`, `disp_param`,
-`Fixbox`, `write_csv_log`, `csv_log_filepath`, `saveHDF`, `hdf_filepath`,
-`history_save_interval`.
-
-# Added in 0.3
-* `parallelism = :mpi_threads` -- hybrid MPI + threads
-* `fobj_batch`   -- `f(X::Matrix) -> Vector`, `X` is `nagents × dim`; lets you
-  vectorise / GPU-accelerate the whole population in a single call
-* `seed`, `rng`  -- bit-reproducible runs (also under MPI)
-* `init`         -- `:uniform` (default), `:lhs`, `:center`
-* `opposition`   -- opposition-based learning at start-up (one extra generation)
-* `ftol`, `patience`, `max_time` -- early stopping
-* `callback(iter, best_fit, best_pos, curve)` -- return `false`/`:stop` to abort
-* `disp_every`, `csv_flush_every`, `hdf_compress`
-* `nthreads`, `chunks_per_thread`, `reuse_buffer`
-* `round_digits` -- `nothing` (default) returns full precision.  MPAOP ≤ 0.2
-  silently rounded the returned fitness to 4 digits and the position to 8;
-  pass `round_digits = 4` to restore that.
-
-Every rank returns the same triple, so no `if rank == 0` guard is needed.
-"""
-function SOMPA(;
-    fobj::Function,
-    lb::Vector{Float64},
-    ub::Vector{Float64},
-    SearchAgents_no::Int64,
-    Max_iter::Int64,
-    p0_optional::Vector=[],
-    variant::Symbol=:standard_mpa,
-    first_stage_ratio::Float64=1 / 3,
-    second_stage_ratio::Float64=2 / 3,
-    FADs0::Float64=0.2,
-    P0::Float64=0.5,
-    parallelism::Symbol=:serial,
-    disp::Bool=true,
-    disp_param::Bool=false,
-    Fixbox::Bool=true,
-    write_csv_log::Bool=false,
-    csv_log_filepath::String="mpa_so_log.csv",
-    saveHDF::Bool=false,
-    hdf_filepath::String="mpa_so_history.h5",
-    history_save_interval::Int=typemax(Int),
-    # ---------------- new ----------------
-    fobj_batch=nothing,
-    seed::Union{Nothing,Integer}=nothing,
-    rng::Union{Nothing,AbstractRNG}=nothing,
-    init::Symbol=:uniform,
-    opposition::Bool=false,
-    beta::Float64=1.5,
-    ftol::Float64=0.0,
-    patience::Int=typemax(Int),
-    max_time::Float64=Inf,
-    callback=nothing,
-    disp_every::Int=1,
-    csv_flush_every::Int=1,
-    hdf_compress::Int=0,
-    nthreads::Int=Threads.nthreads(),
-    chunks_per_thread::Int=2,
-    reuse_buffer::Bool=true,
-    round_digits::Union{Nothing,Int}=nothing,
-)
-    dim = length(lb)
-    length(ub) == dim || throw(DimensionMismatch("lb and ub must have the same length"))
-    SearchAgents_no > 0 || throw(ArgumentError("SearchAgents_no must be positive"))
-    Max_iter > 0 || throw(ArgumentError("Max_iter must be positive"))
-    variant in (:standard_mpa, :nmpa) ||
-        throw(ArgumentError("variant must be :standard_mpa or :nmpa"))
-    parallelism in (:serial, :threads, :mpi, :mpi_threads) ||
-        throw(ArgumentError("parallelism must be :serial, :threads, :mpi or :mpi_threads"))
-    @inbounds for i in 1:dim
-        lb[i] <= ub[i] || throw(ArgumentError("lb[$i] > ub[$i]"))
-    end
-
-    comm, rank, nprocs = _setup_mpi(parallelism)
-    n = SearchAgents_no
-    ctx = build_evalctx(fobj, fobj_batch, parallelism, comm, rank, nprocs,
-        n, dim, 1, nthreads, reuse_buffer, chunks_per_thread)
-
-    if parallelism === :threads || parallelism === :mpi_threads
-        rank == 0 && Threads.nthreads() == 1 &&
-            @warn "parallelism = :$parallelism but Julia runs with 1 thread; start it with `julia -t auto`."
-    end
-
-    cfg = MPARun(dim, n, Max_iter,
-        Int(round(Max_iter * first_stage_ratio)),
-        Int(round(Max_iter * second_stage_ratio)),
-        variant === :nmpa, FADs0, P0, Fixbox,
-        disp, disp_param, max(1, disp_every),
-        write_csv_log, csv_log_filepath, max(1, csv_flush_every),
-        saveHDF, hdf_filepath, history_save_interval, hdf_compress,
-        ftol, patience, max_time, levy_sigma(beta), 1 / beta)
-
-    return _sompa_core(ctx, cfg, callback, make_rng(rng, seed), lb, ub,
-        p0_optional, init, opposition, variant, parallelism,
-        round_digits === nothing ? -1 : round_digits)
-end
 
 function _sompa_core(ctx::EvalCtx, cfg::MPARun, cb::CB, rng::AbstractRNG,
     lb::Vector{Float64}, ub::Vector{Float64}, p0,
@@ -388,35 +279,94 @@ end
 end
 
 # =============================================================================
-#  Multi objective
+#  MOMPA -- the single entry point (single objective = num_objectives 1)
 # =============================================================================
 
 """
-    MOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, num_objectives, kwargs...)
-        -> (archive_positions, archive_objectives, convergence_curve)
+    MOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, num_objectives = 1, kwargs...)
 
-Multi-objective Marine Predators Algorithm with an external archive.
-`archive_positions` is `narchive × dim`, `archive_objectives` is
-`narchive × num_objectives`, `convergence_curve[k]` is the archive size after
-iteration `k`.  Under MPI, non-root ranks return `(nothing, nothing, nothing)`
-(unchanged).
+Marine Predators Algorithm. **This is the only solver entry point**: set
+`num_objectives = 1` (the default) for ordinary minimisation, or `≥ 2` for
+multi-objective optimisation with an external Pareto archive.
 
-Shares every keyword of [`SOMPA`](@ref) plus:
+# Returns
 
-* `archive_size_factor`  -- archive capacity = `factor · SearchAgents_no`
-* `archive_mode`         -- `:pareto` (default, archive == non-dominated set) or
-  `:fronts` (MPAOP ≤ 0.2 behaviour, keeps dominated solutions once the first
+| `num_objectives` | return value |
+|------------------|--------------|
+| `1` | `(best_fitness::Float64, best_position::Vector, convergence_curve::Vector)` — `curve[k]` is the best value found up to iteration `k`; every MPI rank returns the same triple |
+| `≥ 2` | `(archive_positions, archive_objectives, convergence_curve)` — `narchive × dim` and `narchive × num_objectives`; `curve[k]` is the archive size after iteration `k`; non-root MPI ranks return `(nothing, nothing, nothing)` |
+
+# Required
+
+* `fobj` -- `f(x::Vector{Float64})`; returns a `Real` when `num_objectives == 1`,
+  otherwise a vector of length `num_objectives`
+* `lb`, `ub` -- box bounds, `Vector{Float64}` of equal length
+* `SearchAgents_no` -- population size
+* `Max_iter` -- iterations (each one costs `2 · SearchAgents_no` evaluations)
+
+# Algorithm options
+
+`p0_optional`, `variant` (`:standard_mpa` | `:nmpa`), `first_stage_ratio`,
+`second_stage_ratio`, `FADs0`, `P0`, `Fixbox`, `beta`,
+`init` (`:uniform` | `:lhs` | `:center`).
+
+# Execution
+
+* `parallelism` -- `:serial` | `:threads` | `:mpi` | `:mpi_threads`
+* `fobj_batch` -- `f(X::Matrix)`, `X` is `nagents × dim`; evaluates the whole
+  population in one call (vectorised / GPU objectives)
+* `nthreads`, `chunks_per_thread`, `reuse_buffer`
+* `seed`, `rng` -- bit-reproducible runs; the result is identical for serial,
+  threads and any number of MPI ranks
+
+# Stopping
+
+`max_time`, `callback`, and — single objective only — `ftol` and `patience`.
+The callback is `(iter, best_fit, best_pos, curve)` for one objective and
+`(iter, archive_positions, archive_objectives, curve)` for more; returning
+`false` or `:stop` aborts the run.
+
+# Single-objective only
+
+* `opposition` -- opposition-based learning at start-up (one extra generation)
+* `round_digits` -- `nothing` (default) returns full precision; MPAOP ≤ 0.2
+  silently rounded the fitness to 4 digits and the position to 8, pass
+  `round_digits = 4` to restore that
+
+# Multi-objective only
+
+* `archive_size_factor` -- archive capacity = `factor · SearchAgents_no`
+* `archive_mode` -- `:pareto` (default, the archive *is* the non-dominated set)
+  or `:fronts` (MPAOP ≤ 0.2 behaviour, keeps dominated solutions once the first
   front is smaller than the archive)
-* `elite_selection`      -- `:crowding` (default, binary tournament on crowding
+* `elite_selection` -- `:crowding` (default, binary tournament on crowding
   distance) or `:random` (MPAOP ≤ 0.2 behaviour)
-* `hv_ref`               -- reference point; when given, the hypervolume is
-  reported alongside the archive size
+* `hv_ref` -- reference point; when given the hypervolume is reported alongside
+  the archive size
 
-!!! note "Behaviour change"
-    With the defaults the returned archive is guaranteed to contain **no
-    dominated solution**, and leaders are drawn from sparse regions of the
-    front.  Pass `archive_mode = :fronts, elite_selection = :random` to
-    reproduce results from MPAOP ≤ 0.2 exactly.
+# Output and I/O
+
+`disp`, `disp_param`, `disp_every`, `write_csv_log`, `csv_log_filepath`,
+`csv_flush_every`, `saveHDF`, `hdf_filepath`, `history_save_interval`,
+`hdf_compress`.
+
+!!! note "Migrating from SOMPA"
+    `SOMPA(fobj = f, ...)` becomes `MOMPA(fobj = f, ...)` — `num_objectives`
+    defaults to `1`, and the returned triple is unchanged.
+
+# Example
+
+```julia
+# single objective
+best, pos, curve = MOMPA(fobj = x -> sum(abs2, x),
+                         lb = fill(-10.0, 5), ub = fill(10.0, 5),
+                         SearchAgents_no = 40, Max_iter = 200)
+
+# two objectives
+AP, AO, curve = MOMPA(fobj = zdt1, lb = zeros(30), ub = ones(30),
+                      SearchAgents_no = 100, Max_iter = 200,
+                      num_objectives = 2)
+```
 """
 function MOMPA(;
     fobj::Function,
@@ -424,7 +374,7 @@ function MOMPA(;
     ub::Vector{Float64},
     SearchAgents_no::Int64,
     Max_iter::Int64,
-    num_objectives::Int,
+    num_objectives::Int=1,
     p0_optional::Vector=[],
     variant::Symbol=:standard_mpa,
     first_stage_ratio::Float64=1 / 3,
@@ -437,11 +387,10 @@ function MOMPA(;
     disp_param::Bool=false,
     Fixbox::Bool=true,
     write_csv_log::Bool=false,
-    csv_log_filepath::String="mompa_log.csv",
+    csv_log_filepath::String="mpa_log.csv",
     saveHDF::Bool=false,
-    hdf_filepath::String="mompa_history.h5",
+    hdf_filepath::String="mpa_history.h5",
     history_save_interval::Int=typemax(Int),
-    # ---------------- new ----------------
     archive_mode::Symbol=:pareto,
     elite_selection::Symbol=:crowding,
     hv_ref::Union{Nothing,Vector{Float64}}=nothing,
@@ -449,7 +398,10 @@ function MOMPA(;
     seed::Union{Nothing,Integer}=nothing,
     rng::Union{Nothing,AbstractRNG}=nothing,
     init::Symbol=:uniform,
+    opposition::Bool=false,
     beta::Float64=1.5,
+    ftol::Float64=0.0,
+    patience::Int=typemax(Int),
     max_time::Float64=Inf,
     callback=nothing,
     disp_every::Int=1,
@@ -458,13 +410,14 @@ function MOMPA(;
     nthreads::Int=Threads.nthreads(),
     chunks_per_thread::Int=2,
     reuse_buffer::Bool=true,
+    round_digits::Union{Nothing,Int}=nothing,
 )
     dim = length(lb)
     length(ub) == dim || throw(DimensionMismatch("lb and ub must have the same length"))
     SearchAgents_no > 0 || throw(ArgumentError("SearchAgents_no must be positive"))
     Max_iter > 0 || throw(ArgumentError("Max_iter must be positive"))
-    num_objectives >= 2 ||
-        throw(ArgumentError("num_objectives must be ≥ 2 (use SOMPA for one objective)"))
+    num_objectives >= 1 ||
+        throw(ArgumentError("num_objectives must be ≥ 1 (use 1 for ordinary minimisation)"))
     variant in (:standard_mpa, :nmpa) ||
         throw(ArgumentError("variant must be :standard_mpa or :nmpa"))
     archive_mode in (:pareto, :fronts) ||
@@ -482,6 +435,11 @@ function MOMPA(;
     ctx = build_evalctx(fobj, fobj_batch, parallelism, comm, rank, nprocs,
         n, dim, num_objectives, nthreads, reuse_buffer, chunks_per_thread)
 
+    if (parallelism === :threads || parallelism === :mpi_threads) &&
+       rank == 0 && Threads.nthreads() == 1
+        @warn "parallelism = :$parallelism but Julia runs with 1 thread; start it with `julia -t auto`."
+    end
+
     cfg = MPARun(dim, n, Max_iter,
         Int(round(Max_iter * first_stage_ratio)),
         Int(round(Max_iter * second_stage_ratio)),
@@ -489,10 +447,15 @@ function MOMPA(;
         disp, disp_param, max(1, disp_every),
         write_csv_log, csv_log_filepath, max(1, csv_flush_every),
         saveHDF, hdf_filepath, history_save_interval, hdf_compress,
-        0.0, typemax(Int), max_time, levy_sigma(beta), 1 / beta)
+        ftol, patience, max_time, levy_sigma(beta), 1 / beta)
+
+    if num_objectives == 1
+        return _sompa_core(ctx, cfg, callback, make_rng(rng, seed), lb, ub,
+            p0_optional, init, opposition, variant, parallelism,
+            round_digits === nothing ? -1 : round_digits)
+    end
 
     max_archive = max(1, Int(round(archive_size_factor * SearchAgents_no)))
-
     return _mompa_core(ctx, cfg, callback, make_rng(rng, seed), lb, ub, p0_optional,
         init, num_objectives, max_archive, archive_mode, elite_selection,
         hv_ref, parallelism)

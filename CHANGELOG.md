@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.4.0
+
+### Breaking
+
+- **`SOMPA` was removed.** `MOMPA` is the single entry point:
+  `num_objectives = 1` (now the default) runs the classic single-objective MPA
+  and returns the same `(best_fitness, best_position, convergence_curve)`
+  triple `SOMPA` returned; `num_objectives ≥ 2` runs the multi-objective
+  archive-based solver. Migrating a v0.3 script is a rename
+  (`sed -i '' 's/\bSOMPA(/MOMPA(/g' *.jl`) — every `SOMPA` keyword
+  (`opposition`, `ftol`, `patience`, `round_digits`, …) is accepted by `MOMPA`
+  and applies when `num_objectives == 1`.
+- Default output filenames unified: `mpa_so_log.csv` / `mompa_log.csv` →
+  `mpa_log.csv`, and `mpa_so_history.h5` / `mompa_history.h5` →
+  `mpa_history.h5`.
+
+### Added
+
+- A vector-valued objective run with the default `num_objectives = 1` now
+  raises an `ArgumentError` that names the keyword to set, instead of failing
+  obscurely inside the evaluation loop.
+- `LICENSE` file (MIT).
+
+### Unchanged
+
+- The v0.1 positional API (`MPA`, `MPA_MPI`, `confidence_interval`) still
+  works and forwards to `MOMPA`.
+- On-disk HDF5 layout, CSV log format, and the multi-objective return
+  convention (non-root MPI ranks return `(nothing, nothing, nothing)`).
+
 ## v0.3.0
 
 Complete rewrite of the compute core. **The keyword interface of `SOMPA` and

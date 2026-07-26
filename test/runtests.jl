@@ -193,11 +193,26 @@ end
         @test pareto_filter([0.0 0.0; 1.0 1.0]) == [true, false]
     end
 
-    @testset "SOMPA convergence" begin
+    @testset "single objective: num_objectives = 1 is the default" begin
+        lb = fill(-5.0, 4)
+        ub = fill(5.0, 4)
+        implicit = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20,
+            Max_iter=30, disp=false, seed=1)
+        explicit = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20,
+            Max_iter=30, num_objectives=1, disp=false, seed=1)
+        @test implicit[1] === explicit[1]
+        @test implicit[2] == explicit[2]
+        # the single-objective triple is (Float64, Vector, Vector)
+        @test implicit[1] isa Float64
+        @test implicit[2] isa Vector{Float64}
+        @test implicit[3] isa Vector{Float64}
+    end
+
+    @testset "single objective: convergence" begin
         for (f, lo, hi, d, tol) in ((sphere, -10.0, 10.0, 10, 1e-4),
             (rastrigin, -5.12, 5.12, 5, 5.0),
             (rosenbrock, -5.0, 10.0, 5, 5.0))
-            fit, pos, curve = SOMPA(fobj=f, lb=fill(lo, d), ub=fill(hi, d),
+            fit, pos, curve = MOMPA(fobj=f, lb=fill(lo, d), ub=fill(hi, d),
                 SearchAgents_no=40, Max_iter=150, disp=false, seed=2024)
             @test length(pos) == d
             @test length(curve) == 150
@@ -208,76 +223,76 @@ end
         end
     end
 
-    @testset "SOMPA options" begin
+    @testset "single objective: options" begin
         d = 6
         lb = fill(-5.0, d)
         ub = fill(5.0, d)
 
         # reproducibility
-        a = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=99)
-        b = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=99)
+        a = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=99)
+        b = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=99)
         @test a[1] == b[1] && a[2] == b[2] && a[3] == b[3]
-        c = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=100)
+        c = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30, disp=false, seed=100)
         @test a[1] != c[1]
 
         # threads must give exactly the same answer as serial for a given seed
-        t = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30,
+        t = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=30,
             disp=false, seed=99, parallelism=:threads)
         @test t[1] == a[1] && t[2] == a[2]
 
         # batch objective == scalar objective
         batch(X) = [sphere(collect(view(X, i, :))) for i in axes(X, 1)]
-        bb = SOMPA(fobj=sphere, fobj_batch=batch, lb=lb, ub=ub,
+        bb = MOMPA(fobj=sphere, fobj_batch=batch, lb=lb, ub=ub,
             SearchAgents_no=20, Max_iter=30, disp=false, seed=99)
         @test bb[1] ≈ a[1] && bb[2] ≈ a[2]
 
         # p0 seeding
         p0 = fill(0.25, d)
-        f0, _, _ = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=8, Max_iter=1,
+        f0, _, _ = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=8, Max_iter=1,
             p0_optional=p0, disp=false, seed=5)
         @test f0 <= sphere(p0)
 
         # variants, init schemes, opposition
         for v in (:standard_mpa, :nmpa), ini in (:uniform, :lhs, :center)
-            r = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=40,
+            r = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=40,
                 disp=false, seed=7, variant=v, init=ini)
             @test isfinite(r[1])
         end
-        ro = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=40,
+        ro = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=40,
             disp=false, seed=7, opposition=true)
         @test isfinite(ro[1])
 
         # Fixbox = false lets the search leave the box
-        rf = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
+        rf = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
             disp=false, seed=7, Fixbox=false)
         @test isfinite(rf[1])
 
         # early stopping
         stopped = Ref(0)
-        cbr = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=500,
+        cbr = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=500,
             disp=false, seed=7,
             callback=(it, bf, bp, cv) -> (stopped[] = it; it < 12))
         @test stopped[] == 12
         @test length(cbr[3]) == 500                    # curve is padded, not truncated
-        pat = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=2000,
+        pat = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=2000,
             disp=false, seed=7, ftol=1e-12, patience=5)
         @test isfinite(pat[1])
 
         # legacy rounding on request
-        rr = SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
+        rr = MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
             disp=false, seed=7, round_digits=4)
         @test rr[1] == round(rr[1], digits=4)
 
         # NaN from the objective must not break the search
         nanobj(x) = x[1] > 0 ? NaN : sphere(x)
-        rn = SOMPA(fobj=nanobj, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
+        rn = MOMPA(fobj=nanobj, lb=lb, ub=ub, SearchAgents_no=20, Max_iter=20,
             disp=false, seed=7)
         @test isfinite(rn[1])
 
         # errors
-        @test_throws DimensionMismatch SOMPA(fobj=sphere, lb=lb, ub=ub[1:end-1],
+        @test_throws DimensionMismatch MOMPA(fobj=sphere, lb=lb, ub=ub[1:end-1],
             SearchAgents_no=5, Max_iter=5, disp=false)
-        @test_throws ArgumentError SOMPA(fobj=sphere, lb=lb, ub=ub,
+        @test_throws ArgumentError MOMPA(fobj=sphere, lb=lb, ub=ub,
             SearchAgents_no=5, Max_iter=5, disp=false, variant=:nope)
     end
 
@@ -345,13 +360,23 @@ end
         @test seen[] == 10
 
         @test_throws ArgumentError MOMPA(fobj=zdt1, lb=lb, ub=ub, SearchAgents_no=10,
-            Max_iter=5, num_objectives=1, disp=false)
+            Max_iter=5, num_objectives=0, disp=false)
+        # a vector-valued objective run with the default num_objectives = 1
+        # must fail with a message that points at the right keyword
+        err = try
+            MOMPA(fobj=zdt1, lb=lb, ub=ub, SearchAgents_no=10, Max_iter=2, disp=false)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("num_objectives", err.msg)
     end
 
     @testset "HDF5 round trip" begin
         mktempdir() do dir
             so = joinpath(dir, "so.h5")
-            fit, pos, curve = SOMPA(fobj=sphere, lb=fill(-5.0, 4), ub=fill(5.0, 4),
+            fit, pos, curve = MOMPA(fobj=sphere, lb=fill(-5.0, 4), ub=fill(5.0, 4),
                 SearchAgents_no=12, Max_iter=10, disp=false, seed=1,
                 saveHDF=true, hdf_filepath=so, history_save_interval=5)
             @test isfile(so)
@@ -373,7 +398,7 @@ end
 
             # early-stopped run must still produce a consistent file
             es = joinpath(dir, "es.h5")
-            SOMPA(fobj=sphere, lb=fill(-5.0, 3), ub=fill(5.0, 3), SearchAgents_no=8,
+            MOMPA(fobj=sphere, lb=fill(-5.0, 3), ub=fill(5.0, 3), SearchAgents_no=8,
                 Max_iter=50, disp=false, seed=1, saveHDF=true, hdf_filepath=es,
                 callback=(it, a, b, c) -> it < 7)
             P3, F3, _, _, _ = ReadMPAHistory(es)
@@ -386,7 +411,7 @@ end
     @testset "CSV log" begin
         mktempdir() do dir
             p = joinpath(dir, "log.csv")
-            SOMPA(fobj=sphere, lb=fill(-1.0, 3), ub=fill(1.0, 3), SearchAgents_no=8,
+            MOMPA(fobj=sphere, lb=fill(-1.0, 3), ub=fill(1.0, 3), SearchAgents_no=8,
                 Max_iter=6, disp=false, seed=1, write_csv_log=true, csv_log_filepath=p)
             @test isfile(p)
             txt = read(p, String)
@@ -432,8 +457,8 @@ end
     @testset "steady-state allocations" begin
         lb = fill(-5.0, 8)
         ub = fill(5.0, 8)
-        SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=16, Max_iter=2, disp=false, seed=1)
-        a = @allocated SOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=16,
+        MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=16, Max_iter=2, disp=false, seed=1)
+        a = @allocated MOMPA(fobj=sphere, lb=lb, ub=ub, SearchAgents_no=16,
             Max_iter=200, disp=false, seed=1)
         # the whole 200-iteration run must stay far below the ~200 MB the
         # pre-0.3 implementation needed for the same work

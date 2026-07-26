@@ -4,7 +4,8 @@
 Marine Predators Algorithm (MPA) for Julia -- single and multi objective,
 serial / multithreaded / MPI / hybrid.
 
-Main entry points: [`SOMPA`](@ref) and [`MOMPA`](@ref).
+Single entry point: [`MOMPA`](@ref).  Use `num_objectives = 1` (the default)
+for ordinary minimisation and `≥ 2` for multi-objective optimisation.
 
 Original algorithm: A. Faramarzi, M. Heidarinejad, S. Mirjalili, A. H. Gandomi,
 *Marine Predators Algorithm: A nature-inspired metaheuristic*,
@@ -44,11 +45,11 @@ export hypervolume, igd, gd, spacing_metric, max_spread, pareto_filter
 include("OW.jl")
 export SaveMPAHistory, ReadMPAHistory, ReadMPAConvergence
 
-# drivers
+# driver -- MOMPA is the single entry point (num_objectives = 1 for single objective)
 include("MPA.jl")
-export SOMPA, MOMPA
+export MOMPA
 
-# MPAOP 0.1 positional API (thin wrappers over SOMPA)
+# MPAOP 0.1 positional API (thin wrappers over MOMPA)
 include("legacy.jl")
 export MPA, MPA_MPI, confidence_interval
 

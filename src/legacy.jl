@@ -16,13 +16,14 @@
 Legacy positional interface of MPAOP 0.1.  Equivalent to
 
 ```julia
-SOMPA(fobj = fobj, lb = lb, ub = ub, SearchAgents_no = SearchAgents_no,
-      Max_iter = Max_iter, p0_optional = p0, disp = disp, Fixbox = Fixbox,
+MOMPA(fobj = fobj, lb = lb, ub = ub, SearchAgents_no = SearchAgents_no,
+      Max_iter = Max_iter, num_objectives = 1, p0_optional = p0,
+      disp = disp, Fixbox = Fixbox,
       parallelism = Threads_parallel ? :threads : :serial)
 ```
 
-New code should call [`SOMPA`](@ref) directly -- it exposes seeding, early
-stopping, batch evaluation and hybrid MPI.
+New code should call [`MOMPA`](@ref) directly -- it exposes seeding, early
+stopping, batch evaluation, hybrid MPI and multi-objective optimisation.
 """
 function MPA(SearchAgents_no::Int64, Max_iter::Int64, p0, lb::Vector{Float64},
     ub::Vector{Float64}, dim::Int64, fobj::Function;
@@ -31,7 +32,7 @@ function MPA(SearchAgents_no::Int64, Max_iter::Int64, p0, lb::Vector{Float64},
 
     dim == length(lb) ||
         @warn "MPA: `dim` ($dim) does not match `length(lb)` ($(length(lb))); using length(lb)."
-    fit, pos, curve = SOMPA(fobj=fobj, lb=lb, ub=ub,
+    fit, pos, curve = MOMPA(fobj=fobj, lb=lb, ub=ub, num_objectives=1,
         SearchAgents_no=SearchAgents_no, Max_iter=Max_iter,
         p0_optional=collect(p0), disp=disp, Fixbox=Fixbox,
         FADs0=Float64(FADs0), P0=Float64(P0),
@@ -53,7 +54,7 @@ function MPA_MPI(SearchAgents_no::Int64, Max_iter::Int64, p0, lb::Vector{Float64
     disp::Bool=true, Fixbox::Bool=true, Write::Bool=false,
     FADs0=0.2, P0=0.5, kwargs...)
 
-    fit, pos, curve = SOMPA(fobj=fobj, lb=lb, ub=ub,
+    fit, pos, curve = MOMPA(fobj=fobj, lb=lb, ub=ub, num_objectives=1,
         SearchAgents_no=SearchAgents_no, Max_iter=Max_iter,
         p0_optional=collect(p0), disp=disp, Fixbox=Fixbox,
         FADs0=Float64(FADs0), P0=Float64(P0), parallelism=:mpi,

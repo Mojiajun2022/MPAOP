@@ -1,7 +1,7 @@
 # =============================================================================
 #  evaluate.jl -- objective-function evaluation back-ends
 #
-#  Supported execution modes (`parallelism` keyword of SOMPA / MOMPA):
+#  Supported execution modes (`parallelism` keyword of MOMPA):
 #
 #    :serial        one process, one thread
 #    :threads       Threads.@spawn over balanced chunks of the population
@@ -16,7 +16,7 @@
     EvalCtx
 
 Fully-typed evaluation context.  Being parametric on the objective function and
-on the communicator type makes the whole inner loop of SOMPA / MOMPA type
+on the communicator type makes the whole inner loop of MOMPA type
 stable (the reference implementation stored `comm = nothing` and reassigned it,
 which made every downstream call dynamically dispatched).
 """

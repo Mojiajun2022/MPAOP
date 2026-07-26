@@ -1,6 +1,6 @@
 # =============================================================================
-#  Tour of the features added in MPAOP 0.3.
-#  Run with:   julia -t auto --project=. example/example_v03_features.jl
+#  Tour of the MPAOP features (v0.3+).
+#  Run with:   julia -t auto --project=. example/example_features.jl
 # =============================================================================
 using MPAOP
 using Random
@@ -25,15 +25,15 @@ lb_mo, ub_mo = zeros(D), ones(D)
 
 # ---------------------------------------------------------------------------
 println("\n=== 1. Reproducibility: the same seed gives the same answer ===")
-a = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
+a = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
     disp=false, seed=2025)
-b = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
+b = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
     disp=false, seed=2025)
 @printf("serial  : %.6e\nrepeat  : %.6e   identical = %s\n", a[1], b[1], a[1] == b[1])
 
 # ...and threads reproduce it exactly, because every random decision is taken
 # on rank 0 / the main task and only the evaluations are distributed.
-t = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
+t = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
     disp=false, seed=2025, parallelism=:threads)
 @printf("threads : %.6e   identical = %s   (%d threads)\n",
     t[1], t[1] == a[1], Threads.nthreads())
@@ -41,7 +41,7 @@ t = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
 # ---------------------------------------------------------------------------
 println("\n=== 2. Better initial populations (mean over 20 seeds, shifted sphere) ===")
 for ini in (:uniform, :lhs, :center), opp in (false, true)
-    vals = [SOMPA(fobj=shifted, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
+    vals = [MOMPA(fobj=shifted, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=100,
         disp=false, seed=s, init=ini, opposition=opp)[1] for s in 1:20]
     @printf("  init=%-8s opposition=%-5s -> mean %.4e   best %.4e\n",
         ini, opp, sum(vals) / length(vals), minimum(vals))
@@ -51,14 +51,14 @@ end
 
 # ---------------------------------------------------------------------------
 println("\n=== 3. Early stopping ===")
-r = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=5000,
+r = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=5000,
     disp=false, seed=3, ftol=1e-14, patience=60)
 @printf("  stopped early, best = %.4e (curve is padded to %d entries)\n",
     r[1], length(r[3]))
 
 # a callback can stop the run and record whatever you like
 trace = Float64[]
-SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=1000,
+MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40, Max_iter=1000,
     disp=false, seed=3,
     callback=(iter, best, pos, curve) -> begin
         push!(trace, best)
@@ -71,14 +71,14 @@ println("\n=== 4. Batch (vectorised) objective ===")
 # One call per generation instead of one per agent -- the place to plug in a
 # GPU kernel, a BLAS-heavy model, or a solver with batch mode.
 batch_sphere(X::Matrix{Float64}) = vec(sum(abs2, X, dims=2))
-r = SOMPA(fobj=sphere, fobj_batch=batch_sphere, lb=lb_so, ub=ub_so,
+r = MOMPA(fobj=sphere, fobj_batch=batch_sphere, lb=lb_so, ub=ub_so,
     SearchAgents_no=200, Max_iter=100, disp=false, seed=11)
 @printf("  batch result = %.4e\n", r[1])
 
 # ---------------------------------------------------------------------------
 println("\n=== 5. NMPA variant on a 20-D sphere ===")
 for v in (:standard_mpa, :nmpa)
-    res = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40,
+    res = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40,
         Max_iter=300, disp=false, seed=5, variant=v)
     @printf("  %-14s -> %.4e\n", v, res[1])
 end
@@ -123,7 +123,7 @@ merged = allO[pareto_filter(allO), :]
 println("\n=== 8. History with compression ===")
 mktempdir() do dir
     path = joinpath(dir, "history.h5")
-    _, _, curve = SOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40,
+    _, _, curve = MOMPA(fobj=sphere, lb=lb_so, ub=ub_so, SearchAgents_no=40,
         Max_iter=100, disp=false, seed=1,
         saveHDF=true, hdf_filepath=path, hdf_compress=6,
         history_save_interval=50)

@@ -27,7 +27,7 @@ function run_examples()
     p_empty = []
 
     println("\n--- Running Single-Objective MPA (Serial, Standard) ---")
-    fit_s, pos_s, curve_s = SOMPA(
+    fit_s, pos_s, curve_s = MOMPA(
         fobj=SOfunc, lb=lb_so, ub=ub_so,
         SearchAgents_no=SearchAgents_no, Max_iter=Max_iter,
         p0_optional=p_empty, variant=:standard_mpa, parallelism=:serial,
@@ -37,7 +37,7 @@ function run_examples()
 
     println("\n--- Running Single-Objective MPA (Threads, NMPA) ---")
     # Ensure JULIA_NUM_THREADS is set, e.g., `export JULIA_NUM_THREADS=4` before starting Julia
-    fit_t, pos_t, curve_t = SOMPA(
+    fit_t, pos_t, curve_t = MOMPA(
         fobj=SOfunc, lb=lb_so, ub=ub_so,
         SearchAgents_no=SearchAgents_no, Max_iter=Max_iter,
         p0_optional=p_empty, variant=:nmpa, parallelism=:threads,

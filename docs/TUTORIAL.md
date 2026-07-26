@@ -1,4 +1,4 @@
-# MPAOP.jl Tutorial (v0.3.0)
+# MPAOP.jl Tutorial (v0.4.0)
 
 > Marine Predators Algorithm (MPA) for Julia — **single- and multi-objective**
 > optimisation with **serial / multithreaded / MPI / hybrid MPI+threads** execution.
@@ -7,16 +7,20 @@
 > *Marine Predators Algorithm: A nature-inspired metaheuristic*,
 > Expert Systems with Applications **152** (2020) 113377.
 
+**One entry point: `MOMPA`.** Set `num_objectives = 1` (the default) for
+ordinary minimisation, or `≥ 2` for multi-objective optimisation. There is no
+separate single-objective function.
+
 ---
 
 ## Table of contents
 
 1. [Installation](#1-installation)
 2. [Five-minute quick start](#2-five-minute-quick-start)
-3. [Single-objective optimisation — `SOMPA`](#3-single-objective-optimisation--sompa)
-4. [Multi-objective optimisation — `MOMPA`](#4-multi-objective-optimisation--mompa)
+3. [Single-objective optimisation (`num_objectives = 1`)](#3-single-objective-optimisation-num_objectives--1)
+4. [Multi-objective optimisation (`num_objectives ≥ 2`)](#4-multi-objective-optimisation-num_objectives--2)
 5. [Parallel execution](#5-parallel-execution)
-6. [New in v0.3](#6-new-in-v03)
+6. [Advanced features](#6-advanced-features)
 7. [Quality indicators](#7-quality-indicators)
 8. [Saving and reading history](#8-saving-and-reading-history)
 9. [Performance and tuning](#9-performance-and-tuning)
@@ -51,7 +55,7 @@ Verify the installation:
 
 ```julia
 using Pkg
-Pkg.test("MPAOP")     # 250 tests
+Pkg.test("MPAOP")     # 257 tests
 ```
 
 ---
@@ -74,13 +78,13 @@ end
 lb = fill(-10.0, 3)      # lower bounds
 ub = fill(10.0, 3)       # upper bounds
 
-best_fit, best_pos, curve = SOMPA(
+best_fit, best_pos, curve = MOMPA(
     fobj = fobj,
     lb = lb, ub = ub,
     SearchAgents_no = 48,     # population size
     Max_iter = 200,           # iterations
     disp = true               # print progress
-)
+)                             # num_objectives defaults to 1
 
 println("best value      = ", best_fit)
 println("best parameters = ", best_pos)
@@ -118,15 +122,24 @@ scatter(AO[:, 1], AO[:, 2], xlabel="f1", ylabel="f2", leg=false)
 
 ---
 
-## 3. Single-objective optimisation — `SOMPA`
+## 3. Single-objective optimisation (`num_objectives = 1`)
 
 ### 3.1 Signature
 
 ```julia
-best_fit, best_pos, curve = SOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, kwargs...)
+best_fit, best_pos, curve = MOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter,
+                                    num_objectives = 1, kwargs...)
 ```
 
-**Returns**
+`num_objectives` defaults to `1`, so it can be left out entirely. `MOMPA`
+returns a **different triple** depending on it:
+
+| `num_objectives` | returns |
+|------------------|---------|
+| `1` | `(best_fitness::Float64, best_position::Vector, convergence_curve::Vector)` |
+| `≥ 2` | `(archive_positions::Matrix, archive_objectives::Matrix, convergence_curve::Vector)` |
+
+**Returns (single objective)**
 
 | Value | Meaning |
 |-------|---------|
@@ -150,7 +163,7 @@ best_fit, best_pos, curve = SOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, kwa
 ### 3.2 Algorithm behaviour
 
 ```julia
-SOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=50, Max_iter=300,
+MOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=50, Max_iter=300,
       p0_optional = [1.0, 2.0, 3.0],   # known starting point (becomes agent 1)
       variant = :nmpa,                 # :standard_mpa (default) or :nmpa
       first_stage_ratio  = 1/3,        # phase switch points
@@ -176,7 +189,7 @@ SOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=50, Max_iter=300,
 ### 3.3 Output control
 
 ```julia
-SOMPA(...; disp = true,          # print each iteration
+MOMPA(...; disp = true,          # print each iteration
            disp_param = true,    # also print the current best parameters
            disp_every = 10,      # print every 10 iterations (new — use it for long runs)
            write_csv_log = true, # append the run to a CSV log
@@ -186,15 +199,18 @@ SOMPA(...; disp = true,          # print each iteration
 
 ---
 
-## 4. Multi-objective optimisation — `MOMPA`
+## 4. Multi-objective optimisation (`num_objectives ≥ 2`)
 
 ### 4.1 Signature
 
 ```julia
-AP, AO, curve = MOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter, num_objectives, kwargs...)
+AP, AO, curve = MOMPA(; fobj, lb, ub, SearchAgents_no, Max_iter,
+                        num_objectives = 2, kwargs...)
 ```
 
-`fobj` must return a **vector of length `num_objectives`**, e.g. `[f1, f2]`.
+`num_objectives` must be set explicitly to `2` or more (it defaults to `1`), and
+`fobj` must return a **vector of that length**, e.g. `[f1, f2]`. Forgetting the
+keyword raises an error naming it, rather than failing obscurely.
 
 | Value | Meaning |
 |-------|---------|
@@ -278,7 +294,7 @@ julia -t auto  your_script.jl      # or export JULIA_NUM_THREADS=8
 ```
 
 ```julia
-SOMPA(fobj = heavy_f, lb = lb, ub = ub, SearchAgents_no = 64, Max_iter = 100,
+MOMPA(fobj = heavy_f, lb = lb, ub = ub, SearchAgents_no = 64, Max_iter = 100,
       parallelism = :threads)
 ```
 
@@ -302,7 +318,7 @@ using MPAOP, MPI
 
 fobj(x) = sum(abs2, x)
 
-best_fit, best_pos, curve = SOMPA(
+best_fit, best_pos, curve = MOMPA(
     fobj = fobj, lb = fill(-10.0, 30), ub = fill(10.0, 30),
     SearchAgents_no = 64, Max_iter = 200,
     parallelism = :mpi)
@@ -324,7 +340,7 @@ mpiexec -n 8 julia --project=. fit_mpi.jl
 | Collectives per sweep | `N/nprocs` `Scatter`+`Gather` round trips, plus up to 6 serialising `bcast` | **2** `Bcast!` + **2** `Allgatherv!` |
 | Data movement | `MPI.bcast` round-trips the matrix through Julia `Serialization`, allocating every time | in-place `Bcast!`, zero allocation |
 | Population size | padded up to a multiple of `nprocs` (wasted evaluations) | any size, uneven blocks via `Allgatherv!` |
-| `SOMPA(:mpi)` | **errors out on MPI.jl 0.20** (`Gather(Ref(...))` is not `isbitstype`) | works |
+| `MOMPA(parallelism = :mpi)` | **errors out on MPI.jl 0.20** (`Gather(Ref(...))` is not `isbitstype`) | works |
 
 Multi-objective MPI, measured (64 agents × 40 iterations, ~20 μs per evaluation):
 
@@ -347,18 +363,18 @@ mpiexec -n 4 julia -t 8 --project=. fit_mpi.jl     # 4 ranks × 8 threads = 32 c
 ```
 
 ```julia
-SOMPA(...; parallelism = :mpi_threads)
+MOMPA(...; parallelism = :mpi_threads)
 ```
 
 ---
 
-## 6. New in v0.3
+## 6. Advanced features
 
 ### 6.1 Reproducible runs
 
 ```julia
-r1 = SOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=30, Max_iter=100, seed=2024)
-r2 = SOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=30, Max_iter=100, seed=2024)
+r1 = MOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=30, Max_iter=100, seed=2024)
+r2 = MOMPA(fobj=f, lb=lb, ub=ub, SearchAgents_no=30, Max_iter=100, seed=2024)
 @assert r1 == r2       # bit-identical
 ```
 
@@ -378,7 +394,7 @@ overhead entirely:
 # X is (nagents × dim); return a vector of length nagents
 batch_f(X) = vec(sum(abs2, X, dims=2))
 
-SOMPA(fobj = x -> sum(abs2, x),   # scalar version still required as a fallback
+MOMPA(fobj = x -> sum(abs2, x),   # scalar version still required as a fallback
       fobj_batch = batch_f,
       lb = lb, ub = ub, SearchAgents_no = 512, Max_iter = 200)
 ```
@@ -388,7 +404,7 @@ The multi-objective form must return an `(nagents × num_objectives)` matrix.
 ### 6.3 Early stopping
 
 ```julia
-SOMPA(...; ftol = 1e-10,      # smallest improvement that counts
+MOMPA(...; ftol = 1e-10,      # smallest improvement that counts
            patience = 50,     # stop after 50 iterations without improvement
            max_time = 3600.0) # or after one hour of wall clock (seconds)
 ```
@@ -400,7 +416,7 @@ best value so plots stay well behaved.
 
 ```julia
 history = Float64[]
-SOMPA(...; callback = (iter, best_fit, best_pos, curve) -> begin
+MOMPA(...; callback = (iter, best_fit, best_pos, curve) -> begin
         push!(history, best_fit)
         iter % 50 == 0 && @info "iteration $iter" best_fit
         return best_fit > 1e-8      # return false or :stop to terminate
@@ -412,9 +428,9 @@ The multi-objective callback signature is `(iter, AP, AO, curve)`.
 ### 6.5 Better initial populations
 
 ```julia
-SOMPA(...; init = :lhs)        # Latin hypercube sampling, much more even coverage
-SOMPA(...; init = :center)     # put agent 1 at the centre of the box
-SOMPA(...; opposition = true)  # opposition-based learning: evaluate the mirrored
+MOMPA(...; init = :lhs)        # Latin hypercube sampling, much more even coverage
+MOMPA(...; init = :center)     # put agent 1 at the centre of the box
+MOMPA(...; opposition = true)  # opposition-based learning: evaluate the mirrored
                                # population once and keep the better of each pair
 ```
 
@@ -466,7 +482,7 @@ final = allO[pareto_filter(allO), :]
 ## 8. Saving and reading history
 
 ```julia
-SOMPA(...; saveHDF = true,
+MOMPA(...; saveHDF = true,
            hdf_filepath = "so_history.h5",
            history_save_interval = 50,   # checkpoint every 50 iterations
            hdf_compress = 4)             # new: deflate level 0–9
@@ -493,7 +509,7 @@ MPA/ConvergenceCurve    niter                              (new)
 `nsnapshots = 2 × iterations actually run` (one snapshot before and one after
 the movement phase).
 
-> 🐛 **v0.2 bug**: `SOMPA(saveHDF = true)` with the default
+> 🐛 **v0.2 bug**: `MOMPA(saveHDF = true)` with the default
 > `history_save_interval` threw a `BoundsError` at the end of the run (a 2-D
 > array was indexed with three indices). Fixed in v0.3 with a regression test.
 
@@ -566,7 +582,7 @@ slightly better.
 
 ```julia
 using MPAOP, Statistics
-F = [SOMPA(fobj=fobj, lb=lb, ub=ub, SearchAgents_no=36, Max_iter=200,
+F = [MOMPA(fobj=fobj, lb=lb, ub=ub, SearchAgents_no=36, Max_iter=200,
            disp=false, seed=i, FADs0=0.3, P0=0.6)[1] for i in 1:500]
 println("mean = ", mean(F), "  std = ", std(F))
 ```
@@ -575,22 +591,49 @@ println("mean = ", mean(F), "  std = ", std(F))
 
 ## 10. Migrating from older versions
 
-### 10.1 From v0.2.x
+### 10.1 From v0.3 — `SOMPA` was removed
 
-**The interface is unchanged — existing scripts run as-is.** Only three
-behaviours differ:
+v0.4 has **one solver**, `MOMPA`. The single-objective function `SOMPA` is
+gone; single objective is now `num_objectives = 1`, which is the default:
 
-| Item | v0.2 | v0.3 | Restore old behaviour |
+```julia
+# v0.3
+best, pos, curve = SOMPA(fobj = f, lb = lb, ub = ub,
+                         SearchAgents_no = 40, Max_iter = 200)
+
+# v0.4 -- same keywords, same returned triple
+best, pos, curve = MOMPA(fobj = f, lb = lb, ub = ub,
+                         SearchAgents_no = 40, Max_iter = 200)
+```
+
+Every keyword `SOMPA` accepted (`opposition`, `ftol`, `patience`,
+`round_digits`, …) is accepted by `MOMPA` and applies when
+`num_objectives == 1`. A one-line `sed` migrates a whole project:
+
+```bash
+sed -i '' 's/\bSOMPA(/MOMPA(/g' *.jl
+```
+
+The default log/history filenames were unified as well:
+`mpa_so_log.csv` / `mompa_log.csv` → `mpa_log.csv`, and
+`mpa_so_history.h5` / `mompa_history.h5` → `mpa_history.h5`. Pass
+`csv_log_filepath` / `hdf_filepath` explicitly if you depend on the old names.
+
+### 10.2 From v0.2.x
+
+Besides the `SOMPA` removal above, three behaviours differ:
+
+| Item | v0.2 | v0.4 | Restore old behaviour |
 |------|------|------|-----------------------|
-| `SOMPA` return precision | fitness rounded to 4 digits, position to 8 | **full precision** | `round_digits = 4` |
-| MOMPA archive | may contain dominated solutions | strictly non-dominated | `archive_mode = :fronts` |
-| MOMPA leader selection | uniform random | crowding-distance tournament | `elite_selection = :random` |
+| single-objective return precision | fitness rounded to 4 digits, position to 8 | **full precision** | `round_digits = 4` |
+| multi-objective archive | may contain dominated solutions | strictly non-dominated | `archive_mode = :fronts` |
+| multi-objective leader selection | uniform random | crowding-distance tournament | `elite_selection = :random` |
 
 > The precision change matters: the old `round(fit, digits=4)` printed a true
 > residual of `1.76e-9` as `0.0`, throwing away real information when fitting
 > physical data.
 
-### 10.2 From the v0.1 published on GitHub
+### 10.3 From the v0.1 published on GitHub
 
 The v0.1 positional API **still works** — it forwards to the new engine, so old
 scripts get the speed-up for free:
@@ -609,14 +652,14 @@ ci = confidence_interval(best_pos, fobj, 0.95)
 
 `CV` is still a `1 × Max_iter` row matrix, so `plot(CV')` keeps working.
 
-New code should call `SOMPA` / `MOMPA` directly to get seeding, early stopping,
+New code should call `MOMPA` directly to get seeding, early stopping,
 batch evaluation and hybrid MPI.
 
 ---
 
 ## 11. Full keyword reference
 
-### 11.1 Shared by `SOMPA` and `MOMPA`
+### 11.1 Always available
 
 | Keyword | Default | Meaning |
 |---------|---------|---------|
@@ -635,9 +678,9 @@ batch evaluation and hybrid MPI.
 | `disp_param` | `false` | also print parameters |
 | `Fixbox` | `true` | enforce bounds |
 | `write_csv_log` | `false` | write a CSV log |
-| `csv_log_filepath` | `"mpa_so_log.csv"` / `"mompa_log.csv"` | log path |
+| `csv_log_filepath` | `"mpa_log.csv"` | log path |
 | `saveHDF` | `false` | save history |
-| `hdf_filepath` | `"mpa_so_history.h5"` / `"mompa_history.h5"` | HDF5 path |
+| `hdf_filepath` | `"mpa_history.h5"` | HDF5 path |
 | `history_save_interval` | `typemax(Int)` | checkpoint period |
 | **`fobj_batch`** | `nothing` | vectorised objective |
 | **`seed`** | `nothing` | RNG seed |
@@ -655,7 +698,7 @@ batch evaluation and hybrid MPI.
 
 (**bold** = new in v0.3)
 
-### 11.2 `SOMPA` only
+### 11.2 Single objective only (`num_objectives = 1`)
 
 | Keyword | Default | Meaning |
 |---------|---------|---------|
@@ -664,11 +707,11 @@ batch evaluation and hybrid MPI.
 | **`patience`** | `typemax(Int)` | iterations without improvement before stopping |
 | **`round_digits`** | `nothing` | round the result (`nothing` = full precision) |
 
-### 11.3 `MOMPA` only
+### 11.3 Multi objective only (`num_objectives ≥ 2`)
 
 | Keyword | Default | Meaning |
 |---------|---------|---------|
-| `num_objectives` | required | number of objectives |
+| `num_objectives` | `1` | number of objectives; set to `≥ 2` for multi-objective |
 | `archive_size_factor` | `1.0` | archive capacity factor |
 | **`archive_mode`** | `:pareto` | or `:fronts` |
 | **`elite_selection`** | `:crowding` | or `:random` |
@@ -709,7 +752,7 @@ population, which wasted objective evaluations.
 **Q7. My objective is slow — how do I watch progress and checkpoint?**
 
 ```julia
-SOMPA(...; disp_every = 1,
+MOMPA(...; disp_every = 1,
       callback = (it, bf, bp, cv) -> begin
           it % 10 == 0 && open("best.txt","w") do io
               println(io, bf); println(io, bp)
@@ -743,7 +786,7 @@ end
 lb = [0.0, 0.0, -1.0]
 ub = [10.0, 5.0, 1.0]
 
-best, pos, curve = SOMPA(
+best, pos, curve = MOMPA(
     fobj = residual, lb = lb, ub = ub,
     SearchAgents_no = 40, Max_iter = 500,
     p0_optional = [1.0, 1.0, 0.0],
