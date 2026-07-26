@@ -1,0 +1,17 @@
+# Julia
+Manifest.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+/docs/build/
+.DS_Store
+.vscode/
+
+# run artefacts
+*.h5
+*.csv
+*.png
+fitting_process
+
+# local scratch copies
+*copy*.jl
